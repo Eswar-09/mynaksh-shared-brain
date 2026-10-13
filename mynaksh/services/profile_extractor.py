@@ -26,6 +26,27 @@ _MONTH_RE = r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|
 LANGUAGES = ("hindi", "english", "hinglish", "tamil", "telugu", "marathi", "bengali",
              "gujarati", "kannada", "malayalam", "punjabi", "odia")
 _NOT_NAMES = {"not", "actually", "really", "just", "also", "so", "here", "the", "a"}
+# Capitalised words that follow "I'm" but are not names.
+_NOT_INTRO_NAMES = {
+    "indian", "american", "british", "hindu", "muslim", "sikh", "christian", "jain", "single",
+    "married", "divorced", "happy", "sad", "fine", "good", "okay", "ok", "sorry", "not", "also",
+    "just", "really", "very", "here", "back", "new", "confused", "worried", "stressed", "planning",
+    "looking", "going", "thinking", "interested", "curious", "a", "an", "the", "from", "in", "at",
+    "currently", "still", "now", "unemployed", "employed", "working", "studying", "leo", "aries",
+    "taurus", "gemini", "cancer", "virgo", "libra", "scorpio", "sagittarius", "capricorn",
+    "aquarius", "pisces",
+}
+_LANG_RE = "(" + "|".join(LANGUAGES) + ")"
+_LANGUAGE_PATTERNS = [
+    # "reply in Hindi", "talk to me in Hindi", "can you answer in Tamil"
+    re.compile(r"\b(?:reply|respond|answer|talk|speak|write|chat|converse)\b(?:\s+(?:to|with)\s+me)?"
+               r"(?:\s+only)?\s+in\s+" + _LANG_RE + r"\b", re.I),
+    # "I prefer Hindi", "prefer answers in Hindi" - but not "prefer English songs"
+    re.compile(r"\bprefer\s+(?:(?:to\s+(?:talk|chat|speak)|answers|replies|responses)\s+in\s+)?"
+               + _LANG_RE + r"(?:\s+(?:language|please))?\s*(?:[.!,]|$)", re.I),
+    # Hinglish: "Hindi mein baat karo", "Hindi me jawab do"
+    re.compile(_LANG_RE + r"\s+(?:mein|me|main)\s+(?:baat|jawab|bolo|likho|batao)", re.I),
+]
 
 _DATE_PATTERNS = [
     (re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTH_RE}\.?,?\s+(\d{{4}})", re.I), "dmy"),
@@ -63,6 +84,10 @@ def extract_profile_facts(message: str) -> dict[str, Any]:
     m = re.search(r"\b(?:[Mm]y name is|[Cc]all me|[Ii] am called)\s+(?:actually\s+)?([A-Za-z][A-Za-z'-]+)(\s+[A-Z][A-Za-z'-]+)?", message)
     if m and m.group(1).lower() not in _NOT_NAMES:
         facts["name"] = (m.group(1) + (m.group(2) or "")).strip().title()
+    elif im := re.match(r"^(?:(?i:hi|hello|hey|namaste)\W+)?(?:[Ii]'m|[Ii] am|[Tt]his is)\s+([A-Z][a-z'-]+)(?=[\s,.!]|$)",
+                        message.strip()):
+        if im.group(1).lower() not in _NOT_INTRO_NAMES:
+            facts["name"] = im.group(1)
 
     birth_ctx = re.search(r"\b(born|birthday|date of birth|dob|birth date)\b", low)
     if birth_ctx:
@@ -83,8 +108,10 @@ def extract_profile_facts(message: str) -> dict[str, Any]:
         if pm := re.search(r"\bborn\b[^.?!]*?\bin\s+([A-Z][a-zA-Z]+(?:[ -][A-Z][a-zA-Z]+)*)", message):
             facts["birth_place"] = pm.group(1)
 
-    if lm := re.search(r"\b(?:reply|respond|answer|talk|speak|write|chat|prefer)\b[^.?!]*?\b(" + "|".join(LANGUAGES) + r")\b", low):
-        facts["preferred_language"] = lm.group(1).title()
+    for pattern in _LANGUAGE_PATTERNS:
+        if lm := pattern.search(message):
+            facts["preferred_language"] = lm.group(1).title()
+            break
     return facts
 
 

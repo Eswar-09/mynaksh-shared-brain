@@ -17,30 +17,53 @@ from pydantic import ValidationError
 
 from mynaksh.brain.base import SharedBrain
 from mynaksh.llm.base import LLMClient
-from mynaksh.models import ExtractedMemory, Memory, MemoryStatus, MemoryUpdate, utcnow
+from mynaksh.models import ExtractedMemory, ExtractedProfile, Memory, MemoryStatus, MemoryUpdate, utcnow
 from mynaksh.services.prompts import EXTRACTION_SYSTEM
 
 log = logging.getLogger(__name__)
 
 _TRIVIAL = re.compile(
-    r"^(hi|hello|hey|namaste|thanks?|thank you|ok(ay)?|cool|great|nice|bye|good (morning|night)|yes|no|sure)\b[\s!.]*$",
+    r"^(hi|hello|hey|namaste|thanks?|thank you|ok(ay)?|cool|great|nice|bye|good (morning|night)|yes|no|sure|"
+    r"shukriya|dhanyavaad|theek hai|accha)\b[\s!.]*$",
     re.I,
 )
-_FIRST_PERSON = re.compile(r"\b(i|i'm|im|i've|i'll|i'd|my|me|mine|we|our)\b", re.I)
+# English and romanised Hindi first-person markers. Devanagari is matched as substrings because
+# Python's \b does not treat Devanagari vowel signs as word characters.
+_FIRST_PERSON = re.compile(
+    r"\b(i|i'm|im|i've|i'll|i'd|my|me|mine|we|our|mera|meri|mere|main|mujhe|maine|hum|humara)\b", re.I)
+_FIRST_PERSON_HI = ("मेरा", "मेरी", "मेरे", "मैं", "मुझे", "मैंने", "हम", "हमारा")
 _QUESTION_START = re.compile(
-    r"^(what|why|how|when|where|who|which|should|could|would|can|will|do|does|did|is|are|am|tell me|explain)\b",
+    r"^(what|why|how|when|where|who|which|should|could|would|can|will|do|does|did|is|are|am|tell me|explain|"
+    r"kya|kyun|kaise|kab|kahan)\b",
     re.I,
 )
+_HINDI_QUESTION = re.compile(r"(क्या|क्यों|कैसे|कैसा|कैसी|कब|कहाँ|\bkya\b|\bkyun\b|\bkaise\b|\bkaisa\b)", re.I)
+# Explicit requests to remember are always worth extracting, even when phrased as a question.
+_REMEMBER_REQUEST = re.compile(r"\b(remember|note( down)?|keep in mind|don'?t forget|yaad rakh)\w*\b", re.I)
+
+
+def _is_first_person(sentence: str) -> bool:
+    return bool(_FIRST_PERSON.search(sentence)) or any(w in sentence for w in _FIRST_PERSON_HI)
+
+
+def _is_question(sentence: str) -> bool:
+    if _QUESTION_START.match(sentence):
+        return True
+    return sentence.endswith("?") and bool(_HINDI_QUESTION.search(sentence))
 
 
 def worth_extracting(message: str) -> bool:
     """Cheap gate so questions and small talk never cost an extraction call."""
     text = message.strip()
-    if len(text.split()) < 3 or _TRIVIAL.match(text):
+    if len(text.split()) < 2 or _TRIVIAL.match(text):
         return False
-    for sentence in re.split(r"(?<=[.!?])\s+", text):
+    if _REMEMBER_REQUEST.search(text) and _is_first_person(text) and not re.search(
+        r"\bwhat (do|did) you remember\b|\bdo you remember\b", text, re.I
+    ):
+        return True
+    for sentence in re.split(r"(?<=[.!?।])\s+", text):
         s = sentence.strip()
-        if s and _FIRST_PERSON.search(s) and not _QUESTION_START.match(s):
+        if s and _is_first_person(s) and not _is_question(s):
             return True
     return False
 
@@ -53,7 +76,8 @@ class MemoryManager:
         self.min_confidence = min_confidence
         self.max_per_turn = max_per_turn
 
-    def extract(self, message: str, existing: list[Memory], today: date) -> list[ExtractedMemory]:
+    def extract(self, message: str, existing: list[Memory], today: date) -> tuple[list[ExtractedMemory], dict]:
+        """Return (validated memories, validated profile facts) from one LLM call."""
         payload = {
             "today": today.isoformat(),
             "message": message,
@@ -69,7 +93,8 @@ class MemoryManager:
                 valid.append(ExtractedMemory.model_validate(item))
             except ValidationError as exc:
                 log.info("dropping invalid extracted memory %s: %s", item, exc.errors()[:1])
-        return [e for e in valid if e.confidence >= self.min_confidence][: self.max_per_turn]
+        memories = [e for e in valid if e.confidence >= self.min_confidence][: self.max_per_turn]
+        return memories, ExtractedProfile.lenient(raw.get("profile"))
 
     def apply(self, user_id: str, session_id: str, extracted: list[ExtractedMemory]) -> list[MemoryUpdate]:
         updates: list[MemoryUpdate] = []

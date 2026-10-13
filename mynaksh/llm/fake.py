@@ -12,7 +12,7 @@ from datetime import date
 
 from mynaksh.llm.base import LLMClient, LLMError
 from mynaksh.models import slugify
-from mynaksh.services.prompts import EXTRACTION_MARKER
+from mynaksh.services.prompts import EXTRACTION_MARKER, SUMMARY_MARKER
 
 _INTEREST_AREAS = {
     "career": ("entrepreneur", "startup", "business", "product", "coding", "leadership"),
@@ -45,6 +45,26 @@ def _time_attrs(text: str, today: date) -> dict:
     return {}
 
 
+def _hindi_time(text: str, today: date) -> dict:
+    if "agle saal" in text.lower() or "अगले साल" in text:
+        return {"target_year": today.year + 1}
+    return _time_attrs(text, today)
+
+
+def heuristic_profile(message: str) -> dict:
+    """Stand-in for what a real LLM catches beyond the regex rules: Hinglish and Hindi intros."""
+    out: dict = {}
+    if m := re.search(r"\bmera naam (\w+)", message, re.I):
+        out["name"] = m.group(1).title()
+    elif m := re.search(r"मेरा नाम (\S+)", message):
+        out["name"] = m.group(1)
+    if m := re.search(r"\b(\w+) (?:mein|me|main) (?:paida|janam|janm)", message, re.I):
+        out["birth_place"] = m.group(1).title()
+    elif m := re.search(r"(\S+) में (?:पैदा|जन्म)", message):
+        out["birth_place"] = m.group(1)
+    return out
+
+
 def heuristic_extract(message: str, today: date) -> list[dict]:
     low = message.lower()
     out: list[dict] = []
@@ -57,6 +77,14 @@ def heuristic_extract(message: str, today: date) -> list[dict]:
     elif re.search(r"\b(switch|chang|leav|quit)\w*\s+(my\s+|a\s+)?(job|jobs|career|company)", low):
         out.append({"type": "goal", "key": "goal:career_change", "value": "Career change",
                     "life_area": "career", "attributes": _time_attrs(message, today), "confidence": 0.9})
+
+    if re.search(r"\b(start|open|launch)\w*\s+(a|my|my own|our own)\s+(business|startup|company|venture)", low):
+        out.append({"type": "goal", "key": "goal:start_business", "value": "Start own business",
+                    "life_area": "career", "attributes": _time_attrs(message, today), "confidence": 0.85})
+
+    if re.search(r"(naukri|job)\s+(badal|chhod)", low) or "नौकरी बदल" in message:
+        out.append({"type": "goal", "key": "goal:career_change", "value": "Career change",
+                    "life_area": "career", "attributes": _hindi_time(message, today), "confidence": 0.85})
 
     if m := re.search(r"preparing for (?:an?|my)\s+(.+?)\s+interview", low):
         topic = m.group(1).strip()
@@ -89,14 +117,20 @@ def heuristic_extract(message: str, today: date) -> list[dict]:
 class FakeLLM(LLMClient):
     name = "fake"
 
-    def __init__(self, fail: bool = False, fail_extraction: bool = False) -> None:
+    def __init__(self, fail: bool = False, fail_extraction: bool = False, fail_summary: bool = False) -> None:
         self.fail = fail
         self.fail_extraction = fail_extraction
+        self.fail_summary = fail_summary
         self.calls: list[dict] = []
 
     @property
     def chat_calls(self) -> list[dict]:
-        return [c for c in self.calls if EXTRACTION_MARKER not in c["system"]]
+        return [c for c in self.calls
+                if EXTRACTION_MARKER not in c["system"] and SUMMARY_MARKER not in c["system"]]
+
+    @property
+    def summary_calls(self) -> list[dict]:
+        return [c for c in self.calls if SUMMARY_MARKER in c["system"]]
 
     @property
     def extraction_calls(self) -> list[dict]:
@@ -110,7 +144,15 @@ class FakeLLM(LLMClient):
         if is_extraction:
             payload = json.loads(messages[-1]["content"])
             today = date.fromisoformat(payload["today"])
-            return json.dumps({"memories": heuristic_extract(payload["message"], today)})
+            msg = payload["message"]
+            return json.dumps({"profile": heuristic_profile(msg), "memories": heuristic_extract(msg, today)})
+        if SUMMARY_MARKER in system:
+            if self.fail_summary:
+                raise LLMError("simulated summary failure")
+            payload = json.loads(messages[-1]["content"])
+            asked = [t["content"] for t in payload["turns"] if t["role"] == "user"]
+            prev = payload.get("previous_summary") or ""
+            return (prev + " " if prev else "") + "The user asked: " + "; ".join(a[:60] for a in asked) + "."
         return self._reply(system, messages)
 
     @staticmethod

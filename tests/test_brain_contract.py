@@ -73,3 +73,28 @@ def test_memory_lifecycle(brain, uid):
     statuses = {m.memory_id: m.status for m in brain.list_memories(uid, status=None)}
     assert statuses[goal.memory_id] == MemoryStatus.SUPERSEDED
     assert len(brain.list_memories(uid)) == 3
+
+
+def test_life_area_focus(brain, uid):
+    brain.save_profile(UserProfile(user_id=uid))
+    assert brain.get_life_area_focus(uid) == []
+    brain.record_life_area_interest(uid, {"career"})
+    brain.record_life_area_interest(uid, {"career", "health"})
+    brain.save_memory(Memory(user_id=uid, type=MemoryType.LIFE_EVENT, key="life_event:marriage",
+                             value="Upcoming marriage", life_area="relationships"))
+    focus = {f.area: f for f in brain.get_life_area_focus(uid)}
+    assert focus["career"].asked_count == 2 and focus["health"].asked_count == 1
+    assert focus["relationships"].memory_count == 1 and focus["relationships"].asked_count == 0
+    assert [f.area for f in brain.get_life_area_focus(uid)][0] == "career"
+
+
+def test_neo4j_stores_astrology_attributes(brain, uid):
+    if isinstance(brain, InMemoryBrain):
+        pytest.skip("graph-only check")
+    brain.save_profile(UserProfile(user_id=uid, date_of_birth=date(1990, 11, 1), zodiac_sign="Scorpio"))
+    rows = brain._query(
+        "MATCH (:User {user_id: $uid})-[:HAS_ZODIAC]->(z)-[:HAS_ELEMENT]->(e) "
+        "MATCH (z)-[:RULED_BY]->(p) RETURN z.name AS z, e.name AS e, collect(p.name) AS planets",
+        uid=uid)
+    assert rows[0]["z"] == "Scorpio" and rows[0]["e"] == "Water"
+    assert sorted(rows[0]["planets"]) == ["Mars", "Pluto"]

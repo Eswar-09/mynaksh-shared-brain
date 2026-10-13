@@ -23,6 +23,8 @@ STEPS = [
     ("New conversation: recall", "session-789", "What do you remember about my career goals?"),
     ("Irrelevant memory stays out", "session-789", "I love photography. Any tips for my love life this year?"),
     ("Correction", "session-789", "Actually I was born in Mumbai, not Delhi."),
+    ("Explicit request to remember", "session-789", "Can you remember that I want to start a business?"),
+    ("Hinglish question uses stored goals", "session-789", "Mera career agle saal kaisa rahega?"),
 ]
 
 
@@ -37,10 +39,13 @@ def main() -> None:
                     f"Response `{r.status_code}`:", "", "```json", json.dumps(r.json(), indent=2,
                     ensure_ascii=False), "```", ""]
             print(f"{title}: {r.status_code} context_used={r.json().get('context_used')}")
+        brain = c.get(f"/users/{USER}/brain").json()
         mems = c.get(f"/users/{USER}/memories", params={"include_history": True}).json()
         prof = c.get(f"/users/{USER}").json()
         out += ["## Final profile", "", "```http", f"GET /users/{USER}", "```", "", "```json",
                 json.dumps(prof, indent=2), "```", "",
+                "## Shared Brain overview", "", "```http", f"GET /users/{USER}/brain", "```", "",
+                "```json", json.dumps(brain, indent=2, ensure_ascii=False), "```", "",
                 "## Shared Brain contents, including superseded history", "", "```http",
                 f"GET /users/{USER}/memories?include_history=true", "```", "", "```json",
                 json.dumps(mems, indent=2), "```", ""]

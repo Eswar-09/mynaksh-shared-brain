@@ -8,6 +8,7 @@
      F  freshness x confidence (half-life 180 days)
 4. Keep the top-k above a threshold, under a character budget.
 5. Follow-ups reuse the memories that backed the previous answer.
+6. Add the user's most important life areas and a summary of older turns, when present.
 """
 from __future__ import annotations
 
@@ -18,28 +19,44 @@ from datetime import date, datetime, timezone
 
 from mynaksh.astrology import describe_sign
 from mynaksh.brain.base import BrainError, SharedBrain
-from mynaksh.models import ContextItem, Memory, MemoryType, Turn, UserProfile
+from mynaksh.models import ContextItem, LifeAreaFocus, Memory, MemoryType, Turn, UserProfile
 from mynaksh.services.prompts import CHAT_SYSTEM
 
 AREA_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "career": ("career", "job", "jobs", "work", "office", "promotion", "boss", "interview", "switch",
-               "business", "startup", "entrepreneurship", "entrepreneur", "profession", "manager",
-               "product", "company", "role", "hike", "appraisal"),
+    "career": ("career", "job", "jobs", "work", "office", "promotion", "promoted", "boss", "interview",
+               "switch", "business", "startup", "entrepreneurship", "entrepreneur", "venture", "founder",
+               "freelance", "freelancing", "resign", "resignation", "layoff", "laid", "hiring", "offer",
+               "internship", "client", "clients", "profession", "manager", "product", "company", "role",
+               "hike", "appraisal", "naukri", "kaam", "vyapar", "dhandha"),
     "relationships": ("love", "relationship", "marriage", "married", "marry", "partner", "wife",
-                      "husband", "girlfriend", "boyfriend", "dating", "wedding", "breakup", "compatibility"),
-    "health": ("health", "fitness", "sleep", "stress", "anxiety", "diet", "exercise", "illness", "yoga", "energy"),
+                      "husband", "girlfriend", "boyfriend", "dating", "wedding", "breakup", "compatibility",
+                      "shaadi", "pyaar", "rishta"),
+    "health": ("health", "fitness", "sleep", "stress", "anxiety", "diet", "exercise", "illness", "yoga", "energy",
+               "sehat", "swasthya"),
     "finance": ("money", "finance", "finances", "invest", "investment", "salary", "savings", "loan",
-                "debt", "wealth", "property"),
+                "debt", "wealth", "property", "paisa", "paise", "dhan"),
     "education": ("study", "studies", "exam", "exams", "college", "university", "course", "learn",
-                  "degree", "school", "admission"),
+                  "degree", "school", "admission", "padhai", "pariksha"),
     "family": ("family", "mother", "father", "parents", "son", "daughter", "brother", "sister", "kids", "children"),
     "travel": ("travel", "trip", "abroad", "relocate", "relocation", "visa", "vacation"),
     "spirituality": ("spiritual", "meditation", "temple", "karma", "puja", "mantra", "remedy", "remedies"),
 }
+# Devanagari keywords are matched as substrings (Python's \b is unreliable for Devanagari).
+AREA_KEYWORDS_HI: dict[str, tuple[str, ...]] = {
+    "career": ("करियर", "नौकरी", "काम", "व्यापार", "व्यवसाय", "प्रमोशन", "इंटरव्यू"),
+    "relationships": ("शादी", "प्यार", "रिश्ता", "विवाह", "पति", "पत्नी"),
+    "health": ("सेहत", "स्वास्थ्य", "बीमारी", "योग"),
+    "finance": ("पैसा", "पैसे", "धन", "निवेश", "कर्ज"),
+    "education": ("पढ़ाई", "परीक्षा", "कॉलेज"),
+    "family": ("परिवार", "माता", "पिता", "बच्चे"),
+    "travel": ("यात्रा", "विदेश"),
+    "spirituality": ("मंदिर", "पूजा", "मंत्र", "ध्यान"),
+}
 ASTRO_WORDS = re.compile(
     r"\b(zodiac|sign|horoscope|kundli|chart|planet|planets|birth|stars|astrology|rashi|nakshatra|"
     r"lucky|saturn|jupiter|mars|venus|mercury|moon|sun|transit|dasha)\b", re.I)
-RECALL = re.compile(r"\b(remember|recall|know about me|what do you know|told you|did i (say|mention))\b", re.I)
+RECALL = re.compile(r"\b(remember(?!\s+that\b)|recall|know about me|what do you know|told you|did i (say|mention)|yaad hai)\b"
+                    r"|याद", re.I)
 FOLLOWUP = re.compile(
     r"^(why|how come|what do you mean|explain|elaborate|tell me more|go on|expand|really|are you sure|"
     r"and\b|so\b|but\b|what about)|\b(that|this|it|those)\W*$", re.I)
@@ -51,9 +68,13 @@ W_REL, W_DIRECT, W_FRESH = 0.6, 0.25, 0.15
 HALF_LIFE_DAYS = 180
 
 
+def _words(text: str) -> list[str]:
+    return re.findall(r"[^\s.,!?;:'\"()\[\]{}।]+", text.lower())
+
+
 def _tokens(text: str) -> set[str]:
     out = set()
-    for t in re.findall(r"[a-z]+", text.lower()):
+    for t in _words(text):
         if t in STOPWORDS or len(t) < 3:
             continue
         out.add(t[:-1] if t.endswith("s") and len(t) > 4 else t)  # crude plural stem
@@ -71,8 +92,9 @@ class QueryAnalysis:
 
 def analyze(message: str) -> QueryAnalysis:
     low = message.lower()
-    words = set(re.findall(r"[a-z]+", low))
+    words = set(_words(low))
     areas = {a for a, kws in AREA_KEYWORDS.items() if words & set(kws)}
+    areas |= {a for a, kws in AREA_KEYWORDS_HI.items() if any(k in message for k in kws)}
     is_recall = bool(RECALL.search(message))
     is_followup = (not areas and not is_recall and len(message.split()) <= 10 and bool(FOLLOWUP.search(message.strip())))
     tokens = _tokens(message)
@@ -114,7 +136,9 @@ class BuiltContext:
 
 class ContextBuilder:
     def __init__(self, max_memories: int = 5, min_score: float = 0.3, memory_char_budget: int = 1200,
-                 recent_turns: int = 6, followup_turns: int = 10, turn_char_limit: int = 600) -> None:
+                 recent_turns: int = 6, followup_turns: int = 10, turn_char_limit: int = 600,
+                 summary_char_limit: int = 800) -> None:
+        self.summary_char_limit = summary_char_limit
         self.max_memories = max_memories
         self.min_score = min_score
         self.memory_char_budget = memory_char_budget
@@ -182,7 +206,7 @@ class ContextBuilder:
 
     # ---------------------------------------------------------------- build
     def build(self, message: str, profile: UserProfile, brain: SharedBrain | None,
-              history_source: list[Turn], today: date) -> BuiltContext:
+              history_source: list[Turn], today: date, summary: str = "") -> BuiltContext:
         q = analyze(message)
         items: list[ContextItem] = []
         warnings: list[str] = []
@@ -190,11 +214,19 @@ class ContextBuilder:
         profile_text = self._profile_block(profile, q, items)
 
         selected: list[tuple[Memory, float]] = []
+        focus: list[LifeAreaFocus] = []
         if brain is not None:
             try:
                 selected = self.select_memories(brain, profile.user_id, q, history_source)
+                focus = [f for f in brain.get_life_area_focus(profile.user_id, limit=3) if f.importance >= 2]
             except BrainError:
                 warnings.append("shared_brain_unavailable")
+        if focus:
+            line = "Life areas this user cares about most: " + ", ".join(
+                f"{f.area} (asked {f.asked_count}x, {f.memory_count} memories)" for f in focus)
+            profile_text += "\n" + line
+            items.append(ContextItem(kind="life_area", ref=",".join(f.area for f in focus),
+                                     tag="life_area_focus", text=line))
         for m, s in selected:
             items.append(ContextItem(kind="memory", ref=m.memory_id, tag=m.tag, text=m.render(), score=s))
         memories_text = "\n".join(f"- [{m.life_area} {m.type.value}] {m.render()}" for m, _ in selected) or "None relevant."
@@ -203,11 +235,16 @@ class ContextBuilder:
         history = history_source[-n_turns:]
         messages = [{"role": t.role, "content": t.content[: self.turn_char_limit]} for t in history]
         messages.append({"role": "user", "content": message})
+        summary_text = ""
+        if summary:
+            summary_text = "\n## Earlier in this conversation\n" + summary[: self.summary_char_limit] + "\n"
+            items.append(ContextItem(kind="conversation", ref="summary", tag="conversation_summary",
+                                     text=summary[:200]))
         if history:
             items.append(ContextItem(kind="conversation", ref=f"last_{len(history)}_turns",
                                      tag="recent_conversation", text=f"{len(history)} recent turns"))
 
         system = CHAT_SYSTEM.format(language=profile.preferred_language, today=today.isoformat(),
-                                    profile=profile_text, memories=memories_text)
+                                    profile=profile_text, memories=memories_text, summary=summary_text)
         return BuiltContext(system=system, messages=messages, items=items,
                             memory_ids=[m.memory_id for m, _ in selected], analysis=q, warnings=warnings)

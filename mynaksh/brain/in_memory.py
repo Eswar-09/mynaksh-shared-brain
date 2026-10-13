@@ -4,13 +4,14 @@ from __future__ import annotations
 import threading
 
 from mynaksh.brain.base import BrainError, SharedBrain
-from mynaksh.models import Memory, MemoryStatus, MemoryType, UserProfile, utcnow
+from mynaksh.models import LifeAreaFocus, Memory, MemoryStatus, MemoryType, UserProfile, utcnow
 
 
 class InMemoryBrain(SharedBrain):
     def __init__(self) -> None:
         self._profiles: dict[str, UserProfile] = {}
         self._memories: dict[str, Memory] = {}
+        self._area_asks: dict[str, dict[str, LifeAreaFocus]] = {}
         self._lock = threading.RLock()
         self.fail = False  # toggled by tests to simulate an outage
 
@@ -73,3 +74,22 @@ class InMemoryBrain(SharedBrain):
             old.updated_at = utcnow()
             new_memory.supersedes = old_memory_id
             self._memories[new_memory.memory_id] = new_memory.model_copy(deep=True)
+
+    def record_life_area_interest(self, user_id: str, areas: set[str]) -> None:
+        self._check()
+        with self._lock:
+            user = self._area_asks.setdefault(user_id, {})
+            for area in areas:
+                f = user.setdefault(area, LifeAreaFocus(area=area))
+                f.asked_count += 1
+                f.last_asked = utcnow()
+
+    def get_life_area_focus(self, user_id: str, limit: int = 5) -> list[LifeAreaFocus]:
+        self._check()
+        with self._lock:
+            focus = {a: f.model_copy() for a, f in self._area_asks.get(user_id, {}).items()}
+            for m in self._user_memories(user_id):
+                if m.status == MemoryStatus.ACTIVE:
+                    focus.setdefault(m.life_area, LifeAreaFocus(area=m.life_area)).memory_count += 1
+        ranked = sorted(focus.values(), key=lambda f: (f.importance, f.asked_count), reverse=True)
+        return ranked[:limit]

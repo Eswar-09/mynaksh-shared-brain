@@ -46,3 +46,10 @@ def sun_sign(d: date) -> str:
 def describe_sign(sign: str) -> str:
     element, ruler, traits = SIGN_TRAITS.get(sign, ("?", "?", ""))
     return f"{sign} ({element} sign, ruled by {ruler}; {traits})"
+
+
+def astrology_attributes(sign: str | None) -> dict:
+    if not sign or sign not in SIGN_TRAITS:
+        return {}
+    element, ruler, traits = SIGN_TRAITS[sign]
+    return {"sun_sign": sign, "element": element, "ruling_planets": ruler.split("/"), "traits": traits}

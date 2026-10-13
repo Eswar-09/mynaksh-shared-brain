@@ -3,7 +3,9 @@
 Graph shape:
     (:User)-[:HAS_MEMORY]->(:Memory)-[:ABOUT]->(:LifeArea)
     (:Memory)-[:SUPERSEDES]->(:Memory)          correction history
-    (:User)-[:HAS_ZODIAC]->(:ZodiacSign)
+    (:User)-[:FOCUSES_ON {asked_count, last_asked}]->(:LifeArea)
+    (:User)-[:HAS_ZODIAC]->(:ZodiacSign)-[:HAS_ELEMENT]->(:Element)
+                                        -[:RULED_BY]->(:Planet)
     (:User)-[:PREFERS_LANGUAGE]->(:Language)
 
 LifeArea, ZodiacSign and Language are shared nodes, so cross-user questions
@@ -20,7 +22,8 @@ from neo4j import GraphDatabase, RoutingControl
 from neo4j.exceptions import DriverError, Neo4jError
 
 from mynaksh.brain.base import BrainError, SharedBrain
-from mynaksh.models import Memory, MemoryStatus, UserProfile, utcnow
+from mynaksh.astrology import astrology_attributes
+from mynaksh.models import LifeAreaFocus, Memory, MemoryStatus, UserProfile, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +33,8 @@ SCHEMA = [
     "CREATE CONSTRAINT life_area IF NOT EXISTS FOR (a:LifeArea) REQUIRE a.name IS UNIQUE",
     "CREATE CONSTRAINT zodiac IF NOT EXISTS FOR (z:ZodiacSign) REQUIRE z.name IS UNIQUE",
     "CREATE CONSTRAINT language IF NOT EXISTS FOR (l:Language) REQUIRE l.name IS UNIQUE",
+    "CREATE CONSTRAINT element IF NOT EXISTS FOR (e:Element) REQUIRE e.name IS UNIQUE",
+    "CREATE CONSTRAINT planet IF NOT EXISTS FOR (p:Planet) REQUIRE p.name IS UNIQUE",
     "CREATE INDEX memory_user_key IF NOT EXISTS FOR (m:Memory) ON (m.user_id, m.key, m.status)",
 ]
 
@@ -44,7 +49,13 @@ MERGE (l:Language {name: $language})
 MERGE (u)-[:PREFERS_LANGUAGE]->(l)
 FOREACH (_ IN CASE WHEN $zodiac IS NULL THEN [] ELSE [1] END |
   MERGE (z:ZodiacSign {name: $zodiac})
+  SET z.element = $element, z.ruling_planets = $planets, z.traits = $traits
   MERGE (u)-[:HAS_ZODIAC]->(z)
+  MERGE (e:Element {name: $element})
+  MERGE (z)-[:HAS_ELEMENT]->(e)
+  FOREACH (planet IN $planets |
+    MERGE (p:Planet {name: planet})
+    MERGE (z)-[:RULED_BY]->(p))
 )
 """
 
@@ -125,6 +136,7 @@ class Neo4jBrain(SharedBrain):
 
     def save_profile(self, profile: UserProfile) -> None:
         props = {k: _iso(v) for k, v in profile.model_dump().items() if k != "user_id"}
+        astro = astrology_attributes(profile.zodiac_sign)
         self._query(
             _SAVE_PROFILE,
             write=True,
@@ -132,6 +144,9 @@ class Neo4jBrain(SharedBrain):
             props=props,
             language=profile.preferred_language,
             zodiac=profile.zodiac_sign,
+            element=astro.get("element"),
+            planets=astro.get("ruling_planets", []),
+            traits=astro.get("traits"),
         )
 
     def get_active_memory_by_key(self, user_id: str, key: str) -> Memory | None:
@@ -173,6 +188,39 @@ class Neo4jBrain(SharedBrain):
             props=_memory_props(memory),
             now=utcnow().isoformat(),
         )
+
+    def record_life_area_interest(self, user_id: str, areas: set[str]) -> None:
+        if not areas:
+            return
+        self._query(
+            "MATCH (u:User {user_id: $uid}) "
+            "UNWIND $areas AS area "
+            "MERGE (a:LifeArea {name: area}) "
+            "MERGE (u)-[f:FOCUSES_ON]->(a) ON CREATE SET f.asked_count = 0 "
+            "SET f.asked_count = f.asked_count + 1, f.last_asked = $now",
+            write=True,
+            uid=user_id,
+            areas=sorted(areas),
+            now=utcnow().isoformat(),
+        )
+
+    def get_life_area_focus(self, user_id: str, limit: int = 5) -> list[LifeAreaFocus]:
+        asked = self._query(
+            "MATCH (:User {user_id: $uid})-[f:FOCUSES_ON]->(a:LifeArea) "
+            "RETURN a.name AS area, f.asked_count AS asked, f.last_asked AS last",
+            uid=user_id,
+        )
+        held = self._query(
+            "MATCH (:User {user_id: $uid})-[:HAS_MEMORY]->(:Memory {status: 'active'})-[:ABOUT]->(a:LifeArea) "
+            "RETURN a.name AS area, count(*) AS n",
+            uid=user_id,
+        )
+        focus = {r["area"]: LifeAreaFocus(area=r["area"], asked_count=r["asked"], last_asked=r["last"])
+                 for r in asked}
+        for r in held:
+            focus.setdefault(r["area"], LifeAreaFocus(area=r["area"])).memory_count = r["n"]
+        ranked = sorted(focus.values(), key=lambda f: (f.importance, f.asked_count), reverse=True)
+        return ranked[:limit]
 
     def supersede_memory(self, old_memory_id: str, new_memory: Memory) -> None:
         new_memory.supersedes = old_memory_id

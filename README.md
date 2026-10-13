@@ -1,5 +1,7 @@
 # MyNaksh: Personalized Astrology Chat with a Shared Brain
 
+[![tests](https://github.com/Eswar-09/mynaksh-shared-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/Eswar-09/mynaksh-shared-brain/actions/workflows/ci.yml)
+
 A FastAPI service that chats with users about astrology, remembers what matters about them in a
 Neo4j graph, and selects only the relevant parts of that memory for each answer.
 
@@ -30,8 +32,8 @@ docker compose up --build         # API on :8000, Neo4j browser on :7474 (neo4j 
 **Tests.**
 
 ```bash
-pytest                                            # 45 tests, in-memory backend
-NEO4J_TEST_URI=bolt://localhost:7687 pytest       # 61 tests, scenarios also run on Neo4j
+pytest                                            # in-memory backend; Neo4j cases skip
+NEO4J_TEST_URI=bolt://localhost:7687 pytest       # scenario and contract tests also run on Neo4j
 ```
 
 ## API
@@ -41,7 +43,8 @@ NEO4J_TEST_URI=bolt://localhost:7687 pytest       # 61 tests, scenarios also run
 | POST | `/chat` | Main endpoint. Body: `user_id`, `session_id`, `message` |
 | POST | `/users` | Create or partially update a profile. Zodiac is derived from date of birth |
 | GET | `/users/{user_id}` | Read a profile |
-| GET | `/users/{user_id}/memories?include_history=true` | Inspect the Shared Brain, including superseded facts |
+| GET | `/users/{user_id}/memories?include_history=true` | Raw memories, including superseded facts |
+| GET | `/users/{user_id}/brain` | Shared Brain overview: profile, astrology attributes, life-area focus, memories by type |
 | GET | `/health` | Brain connectivity and active LLM provider |
 
 A profile is optional. A user's first chat creates an empty profile, and details such as
@@ -82,7 +85,7 @@ mynaksh/
   brain/base.py                 SharedBrain interface
   brain/neo4j_store.py          Neo4j implementation
   brain/in_memory.py            in-process implementation for tests and offline runs
-  sessions.py                   short-term conversation store
+  sessions.py                   short-term conversation store with rolling summaries
   llm/base.py                   LLMClient interface, JSON parsing, provider fallback
   llm/anthropic_llm.py          Anthropic
   llm/openai_compat.py          OpenAI and any compatible endpoint (Gemini, Mistral, Ollama, vLLM)
@@ -99,14 +102,19 @@ One `/chat` turn:
    the top few under a budget. Add the last few session turns.
 4. **Generate.** One LLM call with a bounded system prompt plus recent turns.
 5. **Record the turn** in the session store, tagged with the memory ids that backed the answer.
-6. **Update long-term memory.** Gate, extract, validate, reconcile with the graph.
+   Turns that scroll out of the prompt window are folded into a rolling summary.
+6. **Update long-term memory.** Count the life areas asked about. Then gate, extract,
+   validate, and reconcile with the graph.
 
 ## Shared Brain schema
 
 ```
 (:User {user_id, name, date_of_birth, time_of_birth, birth_place, preferred_language, zodiac_sign})
-   -[:HAS_ZODIAC]->        (:ZodiacSign {name})
+   -[:HAS_ZODIAC]->        (:ZodiacSign {name, element, ruling_planets, traits})
+                              -[:HAS_ELEMENT]-> (:Element {name})
+                              -[:RULED_BY]->    (:Planet {name})
    -[:PREFERS_LANGUAGE]->  (:Language {name})
+   -[:FOCUSES_ON {asked_count, last_asked}]-> (:LifeArea {name})
    -[:HAS_MEMORY]->        (:Memory {memory_id, type, key, value, attributes, confidence, status,
                                      mention_count, source_session, created_at, updated_at, supersedes})
                               -[:ABOUT]->      (:LifeArea {name})
@@ -114,8 +122,18 @@ One `/chat` turn:
 ```
 
 **Entities.** `User` holds the structured profile. `Memory` holds every other durable fact. Its
-`type` is one of goal, interest, preference, life_event, concern, fact. `LifeArea`, `ZodiacSign`
-and `Language` are shared nodes.
+`type` is one of goal, interest, preference, life_event, concern, fact. `LifeArea`, `ZodiacSign`,
+`Element`, `Planet` and `Language` are shared nodes.
+
+**Important life areas.** A user's life-area importance comes from two signals. One is how often
+they ask about an area, counted on the `FOCUSES_ON` edge. The other is how many active memories
+they hold in it, via `ABOUT`. Importance is questions asked plus twice the memories held. The top
+areas go into every prompt, so general questions like "any advice for this week?" lean toward
+what this user cares about.
+
+**Astrology attributes.** The sun sign links to its element and ruling planets as shared nodes. That
+makes cross-user astrology queries a single traversal, such as all Fire-sign users with a
+relocation goal.
 
 **Why one `Memory` label with a `type` property** rather than separate `Goal`, `Interest` and
 `Preference` labels. Every memory needs the same lifecycle: identity, confidence, status,
@@ -129,7 +147,7 @@ link to each other, for example a goal that depends on an exam.
 nodes also make cohort questions a single traversal, such as which Leo users have career goals.
 
 **Constraints and indexes.** Unique `User.user_id`, `Memory.memory_id`, `LifeArea.name`,
-`ZodiacSign.name`, `Language.name`, plus a composite index on `Memory(user_id, key, status)` for
+`ZodiacSign.name`, `Element.name`, `Planet.name`, `Language.name`, plus a composite index on `Memory(user_id, key, status)` for
 the reconciliation lookup.
 
 **Retrieval query.**
@@ -151,6 +169,12 @@ Neo4j fails, since that would look healthy while losing data.
 TTL. Distilled facts live in the graph. Raw conversation never enters the graph. In production the
 session store would be Redis.
 
+**Rolling summary.** Once a session outgrows the 10-turn window, every 4 turns the older turns are
+folded into a summary of at most 80 words, using the cheaper extraction model. The summary goes
+into the prompt under "Earlier in this conversation". Summaries are session-scoped and never
+written to the graph. If summarizing fails, the chat continues and the response carries a
+`summary_failed` warning.
+
 **What gets remembered.**
 
 | Remember | Do not remember |
@@ -160,14 +184,20 @@ session store would be Redis.
 | Lasting interests | One-off moods ("I'm tired today") |
 | Preferences about how to be advised | Anything the assistant said |
 | Significant life events and ongoing concerns | Secrets and identifiers |
+| Anything the user explicitly asks to be remembered | |
 
 **Three stages.**
 
 1. **Rules for profile facts.** Structured, high-value, easy to parse. No LLM call needed.
+   They run before the answer, so details are used in the same reply. Rules avoid known false
+   positives: "I'm Indian" is not a name, and "I prefer English songs" is not a language choice.
 2. **Gate, then LLM extraction.** A cheap gate skips messages with no first-person statement, as
-   well as pure questions and small talk. In tests, questions and follow-ups trigger zero
-   extraction calls. Messages that pass go to one extraction call. That call receives the
-   user's existing memory keys so it can reuse them for updates.
+   well as pure questions and small talk. It understands English, romanised Hindi and
+   Devanagari markers. "Remember that..." always passes, even when phrased as a question. In
+   tests, questions and follow-ups trigger zero extraction calls. Messages that pass go to one
+   extraction call. That call receives the user's existing memory keys so it can reuse them
+   for updates. It also returns profile fields as a backup to the rules, which covers Hinglish
+   and Hindi introductions like "mera naam Rahul hai". Where both find the same field, the rule wins.
 3. **Validate and reconcile.** Output is parsed with Pydantic. Unknown life areas are coerced,
    keys are normalised to `type:topic`, confidence below 0.6 is dropped, at most 5 facts per turn.
 
@@ -187,8 +217,9 @@ planned 2027". Profile corrections overwrite the field, and the old value is ret
 ## Context selection
 
 1. **Understand the query** with rules, not an extra LLM call. Rules detect the life areas
-   mentioned, plus three flags: follow-up ("Why do you say that?"), recall ("What do you
-   remember..."), and astrology ("my chart", "Saturn").
+   mentioned, in English, Hinglish ("shaadi", "naukri") and Devanagari ("करियर"). They also set
+   three flags: follow-up ("Why do you say that?"), recall ("What do you remember..."), and
+   astrology ("my chart", "Saturn").
 2. **Fetch candidates** from the graph, filtered to those life areas plus preferences.
 3. **Score** each candidate:
 
@@ -204,6 +235,10 @@ planned 2027". Profile corrections overwrite the field, and the old value is ret
    everything in scope, ranked, with no threshold.
 6. **Profile.** Name, language and sun sign are always included. Full birth details are included
    only for astrology or recall questions. Missing fields are listed so the LLM can ask for them.
+7. **Life-area focus and summary.** The user's top life areas and the session summary are added
+   when they exist. Both appear in `context_used`, as `life_area_focus` and `conversation_summary`.
+8. **Language.** The LLM replies in the stored preferred language, or mirrors the user's language
+   when they write in Hindi or Hinglish.
 
 The LLM never receives the whole graph or the whole conversation.
 
@@ -219,10 +254,13 @@ The LLM never receives the whole graph or the whole conversation.
 | LLM down | `503` with `fallback_response`. The turn is not recorded, so a retry does not duplicate history. An optional `LLM_FALLBACK_PROVIDER` tries a second provider first |
 | Extraction LLM fails | Reply is still returned. Warning `memory_extraction_failed` |
 | Graph down | Reply still returned from session context only. `memory_status: failed`, warning `shared_brain_unavailable`, `/health` returns 503 |
+| Session summary fails | Chat continues with recent turns only. Warning `summary_failed` |
 
 ## Testing and evaluation
 
-61 automated tests. The scenario tests run against both backends when Neo4j is available.
+104 automated tests. The scenario and storage contract tests run against both backends when
+Neo4j is available. GitHub Actions runs the full suite, plus lint, against a Neo4j service
+container on every push.
 
 | Brief scenario | Test |
 |---|---|
@@ -236,8 +274,11 @@ The LLM never receives the whole graph or the whole conversation.
 | Missing user information | `test_missing_birth_details_are_flagged_to_llm`, `test_unknown_user_profile_is_404` |
 
 Also covered: duplicate facts reinforce instead of duplicating, retiring a goal, small talk not
-triggering extraction, LLM outage, extraction outage, graph outage, session hijack, and unit tests
-for zodiac, profile parsing, the extraction gate, query analysis and scoring.
+triggering extraction, explicit "remember that" requests, Hinglish and Hindi introductions and
+goals, rules winning over the LLM for the same field, language preference, life-area focus,
+astrology nodes in Neo4j, rolling summaries, LLM outage, extraction outage, summary outage,
+graph outage, and session hijack. Unit tests cover zodiac, profile parsing and its false
+positives, the extraction gate, query analysis and scoring.
 
 The tests assert on **what the LLM was given**, not on HTTP status alone. The fake LLM records
 every prompt, so a test can check that the photography memory was absent from a career prompt.
@@ -259,9 +300,10 @@ every prompt, so a test can check that the photography memory was absent from a 
 ## Key decisions and trade-offs
 
 - **Rules first, LLM where judgement is needed.** Profile parsing, query analysis and the
-  extraction gate are rules. They are cheap, deterministic and testable. Only open-ended fact
-  extraction uses the LLM. The cost is that rules miss phrasings, such as lowercase names or
-  unusual date formats. The LLM extractor would catch those if the profile fields were added to it.
+  extraction gate are rules. They are cheap, deterministic and testable. Open-ended fact
+  extraction uses the LLM, which also backs up the profile rules for phrasings they miss, such as
+  Hinglish or unusual date formats. The rule-based query analysis still uses keyword lists, so
+  a topic phrased with words outside the lists gets no life-area match.
 - **A separate extraction call** instead of asking the chat model for JSON alongside its answer.
   That keeps the chat prompt clean and lets extraction use a cheaper model through
   `EXTRACTION_MODEL`. It costs one extra call on statement-like turns only.
@@ -288,11 +330,25 @@ every prompt, so a test can check that the photography memory was absent from a 
   rate and the `failed` memory status.
 - Authentication: `user_id` must come from an auth token, not the request body.
 
+## Bonus items from the brief
+
+| Bonus | Status |
+|---|---|
+| Memory importance or confidence score | Done. Confidence per memory, mention counts, and life-area importance |
+| Memory conflict resolution | Done. Reinforce, supersede with history, or retire |
+| Memory expiration or decay | Partly. Freshness decays in scoring, with no automatic retirement |
+| Conversation summarization | Done. Rolling per-session summary |
+| Model fallback or routing | Done. `LLM_FALLBACK_PROVIDER`, plus a separate cheaper extraction model |
+| Context or token optimization | Done. Top-k under a character budget, truncated turns, gated extraction |
+| Hindi or multilingual responses | Done. Hindi and Hinglish input, preferred language, reply mirroring |
+| Advanced graph traversal | Partly. Life-area traversal for retrieval and astrology nodes for cohort queries |
+
 ## What is simplified
 
 - Astrology is a sun sign from the birth date with a short trait table. There is no ephemeris,
   ascendant or dasha. Interpretations are LLM-generated guidance.
 - Tests run against the fake LLM. The Anthropic and OpenAI-compatible adapters are implemented
   but were not exercised against a live key in this submission.
-- The fake LLM's extraction is a small set of regexes. It demonstrates the pipeline, not the quality
-  of real extraction.
+- The fake LLM's extraction is a small set of regexes, including a few Hinglish and Hindi
+  patterns. It demonstrates the pipeline, not the quality of real extraction. Real Hindi
+  understanding depends on the configured LLM.

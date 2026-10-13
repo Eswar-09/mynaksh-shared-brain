@@ -149,6 +149,51 @@ class ExtractedMemory(BaseModel):
         return f"{self.type.value}:{slugify(self.value)}"
 
 
+class ExtractedProfile(BaseModel):
+    """Profile fields the LLM extractor found. Each field is validated independently."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    date_of_birth: date | None = None
+    time_of_birth: time | None = None
+    birth_place: str | None = Field(None, min_length=1, max_length=100)
+    preferred_language: str | None = Field(None, min_length=2, max_length=30)
+
+    @classmethod
+    def lenient(cls, raw: object) -> dict:
+        """Return only the fields that validate; one bad field never discards the rest."""
+        if not isinstance(raw, dict):
+            return {}
+        out: dict = {}
+        for field in cls.model_fields:
+            value = raw.get(field)
+            if value in (None, "", "null"):
+                continue
+            try:
+                parsed = getattr(cls.model_validate({field: value}), field)
+            except ValueError:
+                continue
+            if field == "date_of_birth" and not (date(1900, 1, 1) <= parsed <= date.today()):
+                continue
+            if isinstance(parsed, str):
+                parsed = parsed.strip()
+                parsed = parsed.title() if field == "preferred_language" else parsed
+            out[field] = parsed
+        return out
+
+
+class LifeAreaFocus(BaseModel):
+    """How much a user cares about a life area: questions asked plus memories held."""
+
+    area: str
+    asked_count: int = 0
+    memory_count: int = 0
+    last_asked: datetime | None = None
+
+    @property
+    def importance(self) -> int:
+        return self.asked_count + 2 * self.memory_count
+
+
 # --------------------------------------------------------------------------- conversation
 
 
@@ -174,7 +219,7 @@ class ChatRequest(BaseModel):
 
 
 class ContextItem(BaseModel):
-    kind: Literal["profile", "memory", "conversation"]
+    kind: Literal["profile", "memory", "conversation", "life_area"]
     ref: str  # memory_id, profile field group, or turn range
     tag: str
     text: str

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from mynaksh.models import Memory, MemoryStatus, UserProfile
+from mynaksh.models import LifeAreaFocus, Memory, MemoryStatus, UserProfile
 
 
 class BrainError(RuntimeError):
@@ -48,5 +48,14 @@ class SharedBrain(ABC):
     def supersede_memory(self, old_memory_id: str, new_memory: Memory) -> None:
         """Atomically mark the old memory superseded and store its replacement."""
 
-    def close(self) -> None:  # pragma: no cover - optional
-        pass
+    # life areas ----------------------------------------------------------------
+    @abstractmethod
+    def record_life_area_interest(self, user_id: str, areas: set[str]) -> None:
+        """Count that the user asked about these life areas."""
+
+    @abstractmethod
+    def get_life_area_focus(self, user_id: str, limit: int = 5) -> list[LifeAreaFocus]:
+        """Life areas ranked by importance: questions asked plus active memories held."""
+
+    def close(self) -> None:  # noqa: B027 - optional hook, default no-op
+        return None

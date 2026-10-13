@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from mynaksh.astrology import sun_sign
+from mynaksh.astrology import astrology_attributes, sun_sign
 from mynaksh.brain.base import BrainError
 from mynaksh.models import ChatRequest, ChatResponse, Memory, MemoryStatus, UserProfile, UserProfileIn, utcnow
 
@@ -39,7 +39,7 @@ def upsert_user(payload: UserProfileIn, request: Request):
         profile = UserProfile.model_validate(data)
         brain.save_profile(profile)
     except BrainError:
-        raise HTTPException(503, detail="shared brain unavailable")
+        raise HTTPException(503, detail="shared brain unavailable") from None
     return profile
 
 
@@ -48,7 +48,7 @@ def get_user(user_id: str, request: Request):
     try:
         profile = _svc(request).brain.get_profile(user_id)
     except BrainError:
-        raise HTTPException(503, detail="shared brain unavailable")
+        raise HTTPException(503, detail="shared brain unavailable") from None
     if profile is None:
         raise HTTPException(404, detail="user not found")
     return profile
@@ -60,7 +60,32 @@ def get_memories(user_id: str, request: Request, include_history: bool = Query(F
         status = None if include_history else MemoryStatus.ACTIVE
         return _svc(request).brain.list_memories(user_id, status=status)
     except BrainError:
-        raise HTTPException(503, detail="shared brain unavailable")
+        raise HTTPException(503, detail="shared brain unavailable") from None
+
+
+@router.get("/users/{user_id}/brain")
+def get_brain(user_id: str, request: Request):
+    """Everything the Shared Brain holds about a user, grouped for inspection."""
+    brain = _svc(request).brain
+    try:
+        profile = brain.get_profile(user_id)
+        if profile is None:
+            raise HTTPException(404, detail="user not found")
+        memories = brain.list_memories(user_id)
+        focus = brain.get_life_area_focus(user_id, limit=10)
+    except BrainError:
+        raise HTTPException(503, detail="shared brain unavailable") from None
+    grouped: dict[str, list[dict]] = {}
+    for m in memories:
+        grouped.setdefault(m.type.value, []).append(
+            {"memory_id": m.memory_id, "key": m.key, "value": m.render(), "life_area": m.life_area,
+             "confidence": m.confidence, "mentions": m.mention_count})
+    return {
+        "profile": profile.model_dump(mode="json"),
+        "astrology": astrology_attributes(profile.zodiac_sign),
+        "life_area_focus": [f.model_dump(mode="json") | {"importance": f.importance} for f in focus],
+        "memories": grouped,
+    }
 
 
 @router.post("/chat", response_model=ChatResponse)

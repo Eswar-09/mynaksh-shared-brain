@@ -73,7 +73,7 @@ Response `200`:
       "action": "created",
       "key": "goal:career_change",
       "value": "Career change (target_year: 2027)",
-      "memory_id": "mem_e7234aa473ff",
+      "memory_id": "mem_e3e8e1236795",
       "previous_value": null
     }
   ],
@@ -106,6 +106,7 @@ Response `200`:
   "context_used": [
     "user_profile",
     "astrology_profile",
+    "life_area_focus",
     "career_goal",
     "recent_conversation"
   ],
@@ -125,11 +126,18 @@ Response `200`:
       "score": null
     },
     {
+      "kind": "life_area",
+      "ref": "career",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 1x, 1 memories)",
+      "score": null
+    },
+    {
       "kind": "memory",
-      "ref": "mem_e7234aa473ff",
+      "ref": "mem_e3e8e1236795",
       "tag": "career_goal",
       "text": "Career change (target_year: 2027)",
-      "score": 0.585
+      "score": 0.535
     },
     {
       "kind": "conversation",
@@ -169,6 +177,7 @@ Response `200`:
   "context_used": [
     "user_profile",
     "astrology_profile",
+    "life_area_focus",
     "career_goal",
     "recent_conversation"
   ],
@@ -188,8 +197,15 @@ Response `200`:
       "score": null
     },
     {
+      "kind": "life_area",
+      "ref": "career",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 2x, 1 memories)",
+      "score": null
+    },
+    {
       "kind": "memory",
-      "ref": "mem_e7234aa473ff",
+      "ref": "mem_e3e8e1236795",
       "tag": "career_goal",
       "text": "Career change (target_year: 2027)",
       "score": 1.0
@@ -232,6 +248,7 @@ Response `200`:
   "context_used": [
     "user_profile",
     "astrology_profile",
+    "life_area_focus",
     "career_goal",
     "recent_conversation"
   ],
@@ -251,11 +268,18 @@ Response `200`:
       "score": null
     },
     {
+      "kind": "life_area",
+      "ref": "career",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 2x, 1 memories)",
+      "score": null
+    },
+    {
       "kind": "memory",
-      "ref": "mem_e7234aa473ff",
+      "ref": "mem_e3e8e1236795",
       "tag": "career_goal",
       "text": "Career change (target_year: 2027)",
-      "score": 0.585
+      "score": 0.535
     },
     {
       "kind": "conversation",
@@ -270,7 +294,7 @@ Response `200`:
       "action": "created",
       "key": "goal:product_management_interview",
       "value": "Product Management interview (timeframe: 2026-11)",
-      "memory_id": "mem_3b139194f0db",
+      "memory_id": "mem_a668ede9d419",
       "previous_value": null
     }
   ],
@@ -303,6 +327,7 @@ Response `200`:
   "context_used": [
     "user_profile",
     "astrology_profile",
+    "life_area_focus",
     "recent_conversation"
   ],
   "context_details": [
@@ -318,6 +343,13 @@ Response `200`:
       "ref": "zodiac_sign",
       "tag": "astrology_profile",
       "text": "Sun sign: Leo (Fire sign, ruled by Sun; confident, generous, wants recognition)",
+      "score": null
+    },
+    {
+      "kind": "life_area",
+      "ref": "career",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 3x, 2 memories)",
       "score": null
     },
     {
@@ -359,6 +391,7 @@ Response `200`:
     "user_profile",
     "astrology_profile",
     "birth_details",
+    "life_area_focus",
     "career_goal"
   ],
   "context_details": [
@@ -384,18 +417,25 @@ Response `200`:
       "score": null
     },
     {
+      "kind": "life_area",
+      "ref": "career",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 3x, 2 memories)",
+      "score": null
+    },
+    {
       "kind": "memory",
-      "ref": "mem_3b139194f0db",
+      "ref": "mem_a668ede9d419",
       "tag": "career_goal",
       "text": "Product Management interview (timeframe: 2026-11)",
       "score": 0.985
     },
     {
       "kind": "memory",
-      "ref": "mem_e7234aa473ff",
+      "ref": "mem_e3e8e1236795",
       "tag": "career_goal",
       "text": "Career change (target_year: 2027)",
-      "score": 0.785
+      "score": 0.685
     }
   ],
   "memory_updates": [],
@@ -428,6 +468,7 @@ Response `200`:
   "context_used": [
     "user_profile",
     "astrology_profile",
+    "life_area_focus",
     "recent_conversation"
   ],
   "context_details": [
@@ -446,6 +487,13 @@ Response `200`:
       "score": null
     },
     {
+      "kind": "life_area",
+      "ref": "career",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 4x, 2 memories)",
+      "score": null
+    },
+    {
       "kind": "conversation",
       "ref": "last_2_turns",
       "tag": "recent_conversation",
@@ -458,7 +506,7 @@ Response `200`:
       "action": "created",
       "key": "interest:photography",
       "value": "Photography",
-      "memory_id": "mem_6a65b2790b8c",
+      "memory_id": "mem_00b5fd791fe7",
       "previous_value": null
     }
   ],
@@ -491,6 +539,7 @@ Response `200`:
   "context_used": [
     "user_profile",
     "astrology_profile",
+    "life_area_focus",
     "recent_conversation"
   ],
   "context_details": [
@@ -506,6 +555,13 @@ Response `200`:
       "ref": "zodiac_sign",
       "tag": "astrology_profile",
       "text": "Sun sign: Leo (Fire sign, ruled by Sun; confident, generous, wants recognition)",
+      "score": null
+    },
+    {
+      "kind": "life_area",
+      "ref": "career,personal",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 4x, 2 memories), personal (asked 0x, 1 memories)",
       "score": null
     },
     {
@@ -533,6 +589,177 @@ Response `200`:
 }
 ```
 
+## Explicit request to remember
+
+```http
+POST /chat
+{
+  "user_id": "user-123",
+  "session_id": "session-789",
+  "message": "Can you remember that I want to start a business?"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "response": "[offline demo reply] You asked: \"Can you remember that I want to start a business?\". Building on what we discussed earlier in this conversation. Keeping in mind: [career goal] Product Management interview (timeframe: 2026-11); [career goal] Career change (target_year: 2027).",
+  "user_id": "user-123",
+  "session_id": "session-789",
+  "context_used": [
+    "user_profile",
+    "astrology_profile",
+    "life_area_focus",
+    "career_goal",
+    "recent_conversation"
+  ],
+  "context_details": [
+    {
+      "kind": "profile",
+      "ref": "basics",
+      "tag": "user_profile",
+      "text": "Name: Rahul | Language: English",
+      "score": null
+    },
+    {
+      "kind": "profile",
+      "ref": "zodiac_sign",
+      "tag": "astrology_profile",
+      "text": "Sun sign: Leo (Fire sign, ruled by Sun; confident, generous, wants recognition)",
+      "score": null
+    },
+    {
+      "kind": "life_area",
+      "ref": "career,personal",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 4x, 2 memories), personal (asked 0x, 1 memories)",
+      "score": null
+    },
+    {
+      "kind": "memory",
+      "ref": "mem_a668ede9d419",
+      "tag": "career_goal",
+      "text": "Product Management interview (timeframe: 2026-11)",
+      "score": 0.835
+    },
+    {
+      "kind": "memory",
+      "ref": "mem_e3e8e1236795",
+      "tag": "career_goal",
+      "text": "Career change (target_year: 2027)",
+      "score": 0.535
+    },
+    {
+      "kind": "conversation",
+      "ref": "last_6_turns",
+      "tag": "recent_conversation",
+      "text": "6 recent turns",
+      "score": null
+    }
+  ],
+  "memory_updates": [
+    {
+      "action": "created",
+      "key": "goal:start_business",
+      "value": "Start own business",
+      "memory_id": "mem_cae5bf277f2f",
+      "previous_value": null
+    }
+  ],
+  "memory_status": "saved",
+  "missing_profile_fields": [
+    "time_of_birth"
+  ],
+  "warnings": []
+}
+```
+
+## Hinglish question uses stored goals
+
+```http
+POST /chat
+{
+  "user_id": "user-123",
+  "session_id": "session-789",
+  "message": "Mera career agle saal kaisa rahega?"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "response": "[offline demo reply] You asked: \"Mera career agle saal kaisa rahega?\". Building on what we discussed earlier in this conversation. Keeping in mind: [career goal] Product Management interview (timeframe: 2026-11); [career goal] Career change (target_year: 2027); [career goal] Start own business.",
+  "user_id": "user-123",
+  "session_id": "session-789",
+  "context_used": [
+    "user_profile",
+    "astrology_profile",
+    "life_area_focus",
+    "career_goal",
+    "recent_conversation"
+  ],
+  "context_details": [
+    {
+      "kind": "profile",
+      "ref": "basics",
+      "tag": "user_profile",
+      "text": "Name: Rahul | Language: English",
+      "score": null
+    },
+    {
+      "kind": "profile",
+      "ref": "zodiac_sign",
+      "tag": "astrology_profile",
+      "text": "Sun sign: Leo (Fire sign, ruled by Sun; confident, generous, wants recognition)",
+      "score": null
+    },
+    {
+      "kind": "life_area",
+      "ref": "career,personal",
+      "tag": "life_area_focus",
+      "text": "Life areas this user cares about most: career (asked 5x, 3 memories), personal (asked 0x, 1 memories)",
+      "score": null
+    },
+    {
+      "kind": "memory",
+      "ref": "mem_a668ede9d419",
+      "tag": "career_goal",
+      "text": "Product Management interview (timeframe: 2026-11)",
+      "score": 0.835
+    },
+    {
+      "kind": "memory",
+      "ref": "mem_e3e8e1236795",
+      "tag": "career_goal",
+      "text": "Career change (target_year: 2027)",
+      "score": 0.535
+    },
+    {
+      "kind": "memory",
+      "ref": "mem_cae5bf277f2f",
+      "tag": "career_goal",
+      "text": "Start own business",
+      "score": 0.527
+    },
+    {
+      "kind": "conversation",
+      "ref": "last_6_turns",
+      "tag": "recent_conversation",
+      "text": "6 recent turns",
+      "score": null
+    }
+  ],
+  "memory_updates": [],
+  "memory_status": "nothing_to_save",
+  "missing_profile_fields": [
+    "time_of_birth"
+  ],
+  "warnings": []
+}
+```
+
 ## Final profile
 
 ```http
@@ -548,8 +775,99 @@ GET /users/user-123
   "birth_place": "Mumbai",
   "preferred_language": "English",
   "zodiac_sign": "Leo",
-  "created_at": "2026-10-13T18:33:51.217154Z",
-  "updated_at": "2026-10-13T18:33:51.632382Z"
+  "created_at": "2026-10-13T18:52:11.797171Z",
+  "updated_at": "2026-10-13T18:52:12.170781Z"
+}
+```
+
+## Shared Brain overview
+
+```http
+GET /users/user-123/brain
+```
+
+```json
+{
+  "profile": {
+    "user_id": "user-123",
+    "name": "Rahul",
+    "date_of_birth": "1995-08-15",
+    "time_of_birth": null,
+    "birth_place": "Mumbai",
+    "preferred_language": "English",
+    "zodiac_sign": "Leo",
+    "created_at": "2026-10-13T18:52:11.797171Z",
+    "updated_at": "2026-10-13T18:52:12.170781Z"
+  },
+  "astrology": {
+    "sun_sign": "Leo",
+    "element": "Fire",
+    "ruling_planets": [
+      "Sun"
+    ],
+    "traits": "confident, generous, wants recognition"
+  },
+  "life_area_focus": [
+    {
+      "area": "career",
+      "asked_count": 6,
+      "memory_count": 3,
+      "last_asked": "2026-10-13T18:52:12.227160Z",
+      "importance": 12
+    },
+    {
+      "area": "personal",
+      "asked_count": 0,
+      "memory_count": 1,
+      "last_asked": null,
+      "importance": 2
+    },
+    {
+      "area": "relationships",
+      "asked_count": 1,
+      "memory_count": 0,
+      "last_asked": "2026-10-13T18:52:12.148933Z",
+      "importance": 1
+    }
+  ],
+  "memories": {
+    "goal": [
+      {
+        "memory_id": "mem_cae5bf277f2f",
+        "key": "goal:start_business",
+        "value": "Start own business",
+        "life_area": "career",
+        "confidence": 0.85,
+        "mentions": 1
+      },
+      {
+        "memory_id": "mem_a668ede9d419",
+        "key": "goal:product_management_interview",
+        "value": "Product Management interview (timeframe: 2026-11)",
+        "life_area": "career",
+        "confidence": 0.9,
+        "mentions": 1
+      },
+      {
+        "memory_id": "mem_e3e8e1236795",
+        "key": "goal:career_change",
+        "value": "Career change (target_year: 2027)",
+        "life_area": "career",
+        "confidence": 0.9,
+        "mentions": 1
+      }
+    ],
+    "interest": [
+      {
+        "memory_id": "mem_00b5fd791fe7",
+        "key": "interest:photography",
+        "value": "Photography",
+        "life_area": "personal",
+        "confidence": 0.85,
+        "mentions": 1
+      }
+    ]
+  }
 }
 ```
 
@@ -562,7 +880,23 @@ GET /users/user-123/memories?include_history=true
 ```json
 [
   {
-    "memory_id": "mem_6a65b2790b8c",
+    "memory_id": "mem_cae5bf277f2f",
+    "user_id": "user-123",
+    "type": "goal",
+    "key": "goal:start_business",
+    "value": "Start own business",
+    "life_area": "career",
+    "attributes": {},
+    "confidence": 0.85,
+    "status": "active",
+    "source_session": "session-789",
+    "mention_count": 1,
+    "supersedes": null,
+    "created_at": "2026-10-13T18:52:12.208227Z",
+    "updated_at": "2026-10-13T18:52:12.208230Z"
+  },
+  {
+    "memory_id": "mem_00b5fd791fe7",
     "user_id": "user-123",
     "type": "interest",
     "key": "interest:photography",
@@ -574,11 +908,11 @@ GET /users/user-123/memories?include_history=true
     "source_session": "session-789",
     "mention_count": 1,
     "supersedes": null,
-    "created_at": "2026-10-13T18:33:51.618535Z",
-    "updated_at": "2026-10-13T18:33:51.618537Z"
+    "created_at": "2026-10-13T18:52:12.158088Z",
+    "updated_at": "2026-10-13T18:52:12.158090Z"
   },
   {
-    "memory_id": "mem_3b139194f0db",
+    "memory_id": "mem_a668ede9d419",
     "user_id": "user-123",
     "type": "goal",
     "key": "goal:product_management_interview",
@@ -592,11 +926,11 @@ GET /users/user-123/memories?include_history=true
     "source_session": "session-456",
     "mention_count": 1,
     "supersedes": null,
-    "created_at": "2026-10-13T18:33:51.582640Z",
-    "updated_at": "2026-10-13T18:33:51.582641Z"
+    "created_at": "2026-10-13T18:52:12.112587Z",
+    "updated_at": "2026-10-13T18:52:12.112589Z"
   },
   {
-    "memory_id": "mem_e7234aa473ff",
+    "memory_id": "mem_e3e8e1236795",
     "user_id": "user-123",
     "type": "goal",
     "key": "goal:career_change",
@@ -610,8 +944,8 @@ GET /users/user-123/memories?include_history=true
     "source_session": "session-456",
     "mention_count": 1,
     "supersedes": null,
-    "created_at": "2026-10-13T18:33:51.419075Z",
-    "updated_at": "2026-10-13T18:33:51.419078Z"
+    "created_at": "2026-10-13T18:52:11.975866Z",
+    "updated_at": "2026-10-13T18:52:11.975870Z"
   }
 ]
 ```
